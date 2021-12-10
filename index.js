@@ -1,5 +1,5 @@
 const PENDING = 'pending',
-  RESOLVED = 'fulFilled',
+  RESOLVED = 'resolved',
   REJECTED = 'rejected'
 
 class MyPromise {
