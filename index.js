@@ -105,7 +105,7 @@ class MyPromise {
       return reject(new TypeError('Cannot reference itself'))
     }
 
-    if ((typeof x === 'object' && x != null) || typeof x === 'function') {
+    if (x !== null && (typeof x === 'object' || typeof x === 'function')) {
       let called
 
       try {
@@ -143,15 +143,93 @@ class MyPromise {
       resolve(x)
     }
   }
+
+  catch = (onRejected) => this.then(undefined, onRejected)
+
+  all = (lists) => {
+    return new MyPromise((resolve, reject) => {
+      const resArr = []
+      let index = 0
+
+      const isPromise = (value) => {
+        if (
+          (value != null && typeof value === 'object') ||
+          typeof value === 'function'
+        ) {
+          if (typeof value.then == 'function') {
+            return true
+          }
+        } else {
+          return false
+        }
+      }
+
+      function processData(i, data) {
+        resArr[i] = data
+        index += 1
+        if (index === lists.length) {
+          resolve(resArr)
+        }
+      }
+
+      for (let i = 0; i < lists.length; i++) {
+        if (isPromise(lists[i])) {
+          lists[i].then(
+            (data) => {
+              processData(i, data)
+            },
+            (err) => {
+              reject(err)
+              return
+            }
+          )
+        } else {
+          processData(i, lists[i])
+        }
+      }
+    })
+  }
+
+  race = (lists) => {
+    return new MyPromise((resolve, reject) => {
+      for (let i = 0; i < lists.length; i++) {
+        if (isPromise(lists[i])) {
+          lists[i].then(
+            (data) => {
+              resolve(data)
+              return
+            },
+            (err) => {
+              reject(err)
+              return
+            }
+          )
+        } else {
+          resolve(lists[i])
+        }
+      }
+    })
+  }
+
+  finally = (cb) =>
+    this.then(
+      (value) => MyPromise.resolve(cb()).then(() => value),
+      (reason) =>
+        MyPromise.reject(cb()).then(() => {
+          throw reason
+        })
+    )
 }
 
-Promise.defer = Promise.deferred = function () {
-  let dfd = {}
-  dfd.promise = new MyPromise((resolve, reject) => {
-    dfd.resolve = resolve
-    dfd.reject = reject
+MyPromise.deferred = function () {
+  const result = {}
+
+  result.promise = new MyPromise((resolve, reject) => {
+    result.resolve = resolve
+    result.reject = reject
   })
-  return dfd
+
+  return result
 }
 
-module.exports = Promise
+module.exports = MyPromise
