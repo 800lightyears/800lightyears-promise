@@ -1,10 +1,10 @@
-const PENDING = 'pending',
-  RESOLVED = 'resolved',
-  REJECTED = 'rejected'
+const PENDING = 'pending'
+const RESOLVED = 'resolved'
+const REJECTED = 'rejected'
 
 class MyPromise {
   constructor(executor) {
-    this.state = PENDING
+    this.status = PENDING
     this.value = undefined
     this.error = undefined
     this.onResolvedCB = []
@@ -17,50 +17,49 @@ class MyPromise {
     }
   }
 
-  isFun = (value) => typeof value === 'function'
-
   resolve = (val) => {
-    if (this.state == PENDING) {
-      this.state = RESOLVED
+    if (this.status === PENDING) {
+      this.status = RESOLVED
       this.value = val
       this.onResolvedCB.forEach((fn) => fn())
     }
   }
 
   reject = (err) => {
-    if (this.state == PENDING) {
-      this.state = REJECTED
+    if (this.status === PENDING) {
+      this.status = REJECTED
       this.error = err
       this.onRejectedCB.forEach((fn) => fn())
     }
   }
 
-  then = (onFulFilled, onRejected) => {
-    onFulFilled = this.isFun(onFulFilled) ? onFulFilled : (data) => data
-    onRejected = this.isFun(onRejected)
-      ? onRejected
-      : (err) => {
-          throw err
-        }
+  then = (onResolved, onRejected) => {
+    onResolved = typeof onResolved === 'function' ? onResolved : (v) => v
+    onRejected =
+      typeof onRejected === 'function'
+        ? onRejected
+        : (e) => {
+            throw e
+          }
 
     const newPromise = new MyPromise((resolve, reject) => {
-      switch (this.state) {
+      let x
+      switch (this.status) {
         case PENDING: {
           this.onResolvedCB.push(() => {
             setTimeout(() => {
               try {
-                const x = onFulFilled(this.value)
+                x = onResolved(this.value)
                 this.resolvePromise(newPromise, x, resolve, reject)
               } catch (err) {
                 reject(err)
               }
             }, 0)
           })
-
           this.onRejectedCB.push(() => {
             setTimeout(() => {
               try {
-                const x = onRejected(this.error)
+                x = onRejected(this.error)
                 this.resolvePromise(newPromise, x, resolve, reject)
               } catch (err) {
                 reject(err)
@@ -72,8 +71,7 @@ class MyPromise {
         case RESOLVED: {
           setTimeout(() => {
             try {
-              const x = onFulFilled(this.value)
-
+              x = onResolved(this.value)
               this.resolvePromise(newPromise, x, resolve, reject)
             } catch (err) {
               reject(err)
@@ -84,8 +82,7 @@ class MyPromise {
         case REJECTED: {
           setTimeout(() => {
             try {
-              const x = onRejected(this.error)
-
+              x = onRejected(this.error)
               this.resolvePromise(newPromise, x, resolve, reject)
             } catch (err) {
               reject(err)
@@ -97,12 +94,13 @@ class MyPromise {
           null
       }
     })
+
     return newPromise
   }
 
   resolvePromise = (newPromise, x, resolve, reject) => {
     if (newPromise === x) {
-      return reject(new TypeError('Cannot reference itself'))
+      return reject(new TypeError(''))
     }
 
     if (x !== null && (typeof x === 'object' || typeof x === 'function')) {
@@ -114,29 +112,24 @@ class MyPromise {
         if (typeof then === 'function') {
           then.call(
             x,
-            (newX) => {
+            (v) => {
               if (called) return
 
               called = true
-              this.resolvePromise(newPromise, newX, resolve, reject)
+              this.resolvePromise(newPromise, v, resolve, reject)
             },
-            (err) => {
+            (e) => {
               if (called) return
 
-              called = true
-              reject(err)
+              reject(e)
             }
           )
         } else {
-          if (called) return
-
-          called = true
           resolve(x)
         }
       } catch (err) {
         if (called) return
 
-        called = true
         reject(err)
       }
     } else {
@@ -146,79 +139,82 @@ class MyPromise {
 
   catch = (onRejected) => this.then(undefined, onRejected)
 
-  all = (lists) => {
-    return new MyPromise((resolve, reject) => {
-      const resArr = []
-      let index = 0
-
-      const isPromise = (value) => {
-        if (
-          (value != null && typeof value === 'object') ||
-          typeof value === 'function'
-        ) {
-          if (typeof value.then == 'function') {
-            return true
-          }
-        } else {
-          return false
-        }
-      }
-
-      function processData(i, data) {
-        resArr[i] = data
-        index += 1
-        if (index === lists.length) {
-          resolve(resArr)
-        }
-      }
-
-      for (let i = 0; i < lists.length; i++) {
-        if (isPromise(lists[i])) {
-          lists[i].then(
-            (data) => {
-              processData(i, data)
-            },
-            (err) => {
-              reject(err)
-              return
-            }
-          )
-        } else {
-          processData(i, lists[i])
-        }
-      }
-    })
-  }
-
-  race = (lists) => {
-    return new MyPromise((resolve, reject) => {
-      for (let i = 0; i < lists.length; i++) {
-        if (isPromise(lists[i])) {
-          lists[i].then(
-            (data) => {
-              resolve(data)
-              return
-            },
-            (err) => {
-              reject(err)
-              return
-            }
-          )
-        } else {
-          resolve(lists[i])
-        }
-      }
-    })
-  }
-
   finally = (cb) =>
     this.then(
-      (value) => MyPromise.resolve(cb()).then(() => value),
-      (reason) =>
+      (val) => MyPromise.resolve(cb()).then(() => val),
+      (err) =>
         MyPromise.reject(cb()).then(() => {
-          throw reason
+          throw err
         })
     )
+
+  all = (promises) => {
+    if (!Array.isArray(promises) || !promises.length) throw new Error('')
+
+    return new MyPromise((resolve, resject) => {
+      let count = 0
+      const len = promises.length,
+        result = []
+
+      for (let i = 0; i < len; i++) {
+        Promise.resolve(promises[i]).then(
+          (val) => {
+            count++
+            result[i] = val
+
+            if (count === len) {
+              resolve(result)
+            }
+          },
+          (err) => {
+            reject(err)
+          }
+        )
+      }
+    })
+  }
+
+  race = (promises) => {
+    if (!Array.isArray(promises) || !promises.length) throw new Error('')
+
+    return new MyPromise((resolve, reject) => {
+      for (let i = 0; i < promises.length; i++) {
+        MyPromise.resolve(promises[i]).then(
+          (val) => {
+            resolve(val)
+          },
+          (err) => {
+            reject(err)
+          }
+        )
+      }
+    })
+  }
+
+  any = (promises) => {
+    if (!Array.isArray(promises) || !promises.length) throw new Error('')
+
+    return new MyPromise((resolve, reject) => {
+      let len = promises.length
+      const errs = []
+
+      for (let i = 0; i < promises.length; i++) {
+        MyPromise.resolve(promises[i]).then(
+          (val) => {
+            resolve(val)
+          },
+          (err) => {
+            len--
+            errs.push(err)
+
+            if (!len) {
+              reject(new AggregateError(errs))
+            }
+          }
+        )
+      }
+    })
+  }
 }
 
 MyPromise.deferred = function () {
